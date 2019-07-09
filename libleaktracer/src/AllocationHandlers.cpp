@@ -13,7 +13,7 @@
 
 #include "MemoryTrace.hpp"
 #include "LeakTracer_l.hpp"
-
+//仅仅是定义这些变量而已，这些变量会再其他地方被赋值
 void* (*lt_malloc)(size_t size);
 void  (*lt_free)(void* ptr);
 void* (*lt_realloc)(void *ptr, size_t size);
