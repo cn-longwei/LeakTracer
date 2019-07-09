@@ -106,13 +106,13 @@ inline unsigned long TMapMemoryInfo<T>::hash(void *ptr)
 template <typename T>
 inline T * TMapMemoryInfo<T>::insert(void *ptr)
 {
-	list_node_t * pNew = static_cast<list_node_t*>(__pool.allocate());
+	list_node_t * pNew = static_cast<list_node_t*>(__pool.allocate());//绕过此处的拦截，直接调用库里的内存分配函数
 	if( !pNew )
 		return NULL;
 
 	// insert to the "hash(ptr)" list
 	long key = hash(ptr);
-	pNew->next = __info_lists[key];
+	pNew->next = __info_lists[key];//插在链表头部
 	__info_lists[key] = pNew;
 
 	(pNew->pinfo).ptr = ptr;
