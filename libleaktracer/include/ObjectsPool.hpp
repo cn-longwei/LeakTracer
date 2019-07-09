@@ -38,7 +38,7 @@ extern void* (*lt_calloc)(size_t nmemb, size_t size);
  * underlying allocation, de-allocation used within
  * this tool
  */
-#define LT_MALLOC  (*lt_malloc)
+#define LT_MALLOC  (*lt_malloc)//在MemoryTrace.cpp中指向实际的函数
 #define LT_FREE    (*lt_free)
 #define LT_REALLOC (*lt_realloc)
 #define LT_CALLOC  (*lt_calloc)
