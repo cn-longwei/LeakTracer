@@ -10,6 +10,14 @@
 // Any comments/suggestions are welcome
 //
 ////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////
+//
+// LeakTracer
+// 1、对接库提供的真正的内存分配函数init_no_alloc_allowed
+// 2、获取环境配置参数
+// 3、保存内存分配快照
+//
+////////////////////////////////////////////////////////
 
 #include <sys/syscall.h>
 
@@ -42,7 +50,7 @@ typedef struct {
 } libc_alloc_func_t;
 
 static libc_alloc_func_t libc_alloc_funcs[] = {
-  { "calloc", (void*)__libc_calloc, (void**)(&lt_calloc) },
+  { "calloc", (void*)__libc_calloc, (void**)(&lt_calloc) },//符号在ObjectsPool.hpp中定义为extern
   { "malloc", (void*)__libc_malloc, (void**)(&lt_malloc) },
   { "realloc", (void*)__libc_realloc, (void**)(&lt_realloc) },
   { "free", (void*)__libc_free, (void**)(&lt_free) }
@@ -107,22 +115,22 @@ MemoryTrace::init_no_alloc_allowed()
 {
 	libc_alloc_func_t *curfunc;
 	unsigned i;
-
+	//如果标准库已经加载，则使用标准库的定义，否则手动加载标准库
  	for (i=0; i<(sizeof(libc_alloc_funcs)/sizeof(libc_alloc_funcs[0])); ++i) {
 		curfunc = &libc_alloc_funcs[i];
 		if (!*curfunc->localredirect) {
 			if (curfunc->libcsymbol) {
-				*curfunc->localredirect = curfunc->libcsymbol;
+				*curfunc->localredirect = curfunc->libcsymbol;//初始化全局变量lt_calloc等
 			} else {
-				*curfunc->localredirect = dlsym(RTLD_NEXT, curfunc->symbname); 
+				*curfunc->localredirect = dlsym(RTLD_NEXT, curfunc->symbname); //RTLD_NEXT在动态库搜索链中招第二个同名符号
 			}
 		}
 	} 
 
-	__instance = reinterpret_cast<MemoryTrace*>(&s_memoryTrace_instance);
+	__instance = reinterpret_cast<MemoryTrace*>(&s_memoryTrace_instance);//全局变量，仅仅是用来为Memtrace对象在内存中占个坑
 
 	// we're using a c++ placement to initialized the MemoryTrace object living in the data section
-	new (__instance) MemoryTrace();
+	new (__instance) MemoryTrace();//不会分配内存可以调用
 
 	// it seems some implementation of pthread_key_create use malloc() internally (old linuxthreads)
 	// these are not supported yet
@@ -206,10 +214,10 @@ MemoryTrace::init_full()
 
 int MemoryTrace::Setup(void)
 {
-	pthread_once(&MemoryTrace::_init_no_alloc_allowed_once, MemoryTrace::init_no_alloc_allowed);
+	pthread_once(&MemoryTrace::_init_no_alloc_allowed_once, MemoryTrace::init_no_alloc_allowed);//创建对象
 
 	if (!leaktracer::MemoryTrace::GetInstance().AllMonitoringIsDisabled()) {
-		pthread_once(&MemoryTrace::_init_full_once, MemoryTrace::init_full_from_once);
+		pthread_once(&MemoryTrace::_init_full_once, MemoryTrace::init_full_from_once);//初始化环境
 	}
 #if 0
         else if (!leaktracer::MemoryTrace::GetInstance().__setupDone) {
@@ -239,7 +247,25 @@ void MemoryTrace::MemoryTraceOnExit(void)
 		TRACE((stderr, "LeakTracer: writing leak report in %s\n", reportName));
 		leaktracer::MemoryTrace::GetInstance().writeLeaksToFile(reportName);
 	}
-	
+	//不再记录内存分配，防止在backstrace_symbol中递归调用
+	leaktracer::MemoryTrace::GetInstance().stopAllMonitoring();
+
+	leaktracer::MemoryTrace::GetInstance().__allocations.beginIteration();
+	allocation_info_t* ptrinfo;
+	void* ptr;
+	//退出时还没释放的指针必然是泄漏重点怀疑对象
+	while(leaktracer::MemoryTrace::GetInstance().__allocations.getNextPair(&ptrinfo,&ptr))
+	{
+		char** strings = backtrace_symbols(ptrinfo->allocStack, ALLOCATION_STACK_DEPTH);
+		printf("\n leaking calling stack is:\n-----------------stack frames.--------------------\n");
+		for (int i = 0; i < ALLOCATION_STACK_DEPTH; i++)
+		{
+			printf ("%s\n ", strings[i]);
+		}
+		printf("------------------end of stack----------------------\n");
+	}
+
+
 	const char *exitCode = getenv("LEAKTRACER_EXIT_CODE_ON_LEAKS");
 	if (exitCode != NULL && !leaktracer::MemoryTrace::GetInstance().__allocations.empty())
 	{
