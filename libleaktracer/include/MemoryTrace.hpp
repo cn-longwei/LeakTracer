@@ -108,7 +108,7 @@ public:
 	 *  was properly initialized */
 	inline bool AllMonitoringIsDisabled(void) {
 		return ( (__monitoringDisabler!=0)||
-			 (((intptr_t)pthread_getspecific(__thread_internal_disabler_key)) != 0) );
+			 (((intptr_t)pthread_getspecific(__thread_internal_disabler_key)) != 0) );//非空指针
 	}
 
 	inline int InternalMonitoringDisablerThreadUp(void) {
@@ -127,8 +127,8 @@ public:
 		return oldvalue;
 	}
 
-	static void __attribute__ ((constructor)) MemoryTraceOnInit(void);
-	static void __attribute__ ((destructor)) MemoryTraceOnExit(void);
+	static void __attribute__ ((constructor)) MemoryTraceOnInit(void);//在main函数调用之前执行
+	static void __attribute__ ((destructor)) MemoryTraceOnExit(void);//在main函数退出之后执行
 
 	/** destructor */
 	virtual ~MemoryTrace(void);
@@ -314,13 +314,30 @@ inline void MemoryTrace::stopAllMonitoring(void)
 
 // stores allocation stack, up to ALLOCATION_STACK_DEPTH
 // frames
-inline void MemoryTrace::storeAllocationStack(void* arr[ALLOCATION_STACK_DEPTH])
+inline void MemoryTrace::storeAllocationStack(void* arr[ALLOCATION_STACK_DEPTH])//保留指定栈深的调用栈
 {
 	unsigned int iIndex = 0;
 #ifdef USE_BACKTRACE
+
 	void* arrtmp[ALLOCATION_STACK_DEPTH+1];
 	iIndex = backtrace(arrtmp, ALLOCATION_STACK_DEPTH + 1) - 1;
 	memcpy(arr, &arrtmp[1], iIndex*sizeof(void*));
+	/*intptr_t oldvalue;
+	oldvalue = (intptr_t)pthread_getspecific(__thread_internal_disabler_key);
+	unsigned int tmpoldvalue;
+	pthread_setspecific(__thread_internal_disabler_key, (void*) (&tmpoldvalue) );//占时关闭监控，防止递归调用
+	char** strings = backtrace_symbols(arrtmp, iIndex);
+	pthread_setspecific(__thread_internal_disabler_key, (void*) (oldvalue) );
+	printf("\nthe calling stack is:\n-----------------%zd stack frames.--------------------\n",iIndex);
+			char syscom[256];
+	for (int i = 0; i < iIndex; i++)
+	{
+		printf ("##%s\n ###adreess is %p\n", strings[i], arrtmp[i]);
+		//memset(syscom,0,sizeof(syscom));
+		//sprintf(syscom,"addr2line %p -e test1", arrtmp[i]); //last parameter is the name of this app
+		//(void)system(syscom);
+	}
+	printf("------------------end of stack----------------------\n");*/
 #else
 	void *pFrame;
 	// NOTE: we can't use "for" loop, __builtin_* functions
